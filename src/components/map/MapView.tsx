@@ -3,22 +3,53 @@ import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-lea
 import L, { type LatLngBounds } from 'leaflet'
 import { useApp } from '../../contexts/AppContext'
 import { Lead, STATUS_CONFIG } from '../../types'
-import { saveMapPosition } from '../../utils/storage'
+import { saveMapPosition, getMapStyle, saveMapStyle, type MapStyle } from '../../utils/storage'
 import SearchBar from './SearchBar'
 import FilterBar from './FilterBar'
 import AreaSummary from './AreaSummary'
 import PinForm from './PinForm'
-import { Locate, Plus } from 'lucide-react'
+import { Locate, Plus, Layers } from 'lucide-react'
 
-// ── Custom teardrop icon ──────────────────────────────────────────
+// ── Tile layer configs ────────────────────────────────────────────
+const TILES = {
+  street: {
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    maxZoom: 19,
+    subdomains: 'abcd',
+  },
+  satellite: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: '&copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+    maxZoom: 18,
+    subdomains: '' as string,
+  },
+  hybrid: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: '&copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+    maxZoom: 18,
+    subdomains: '' as string,
+  },
+} as const
+
+const HYBRID_OVERLAY_URL =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}'
+
+const MAP_STYLE_LABELS: Record<MapStyle, string> = {
+  street: 'Street',
+  satellite: 'Satellite',
+  hybrid: 'Hybrid',
+}
+
+// ── Custom teardrop pin icon ──────────────────────────────────────
 function createTeardropIcon(color: string, selected = false) {
   const w = selected ? 34 : 28
   const h = Math.round(w * 1.45)
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 28 41">
     <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 41 14 41C14 41 28 24.5 28 14C28 6.268 21.732 0 14 0Z"
-      fill="${color}" stroke="rgba(255,255,255,0.35)" stroke-width="1.2"/>
+      fill="${color}" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>
     <circle cx="14" cy="14" r="5.5" fill="rgba(255,255,255,0.95)"/>
-    ${selected ? `<circle cx="14" cy="14" r="9" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="1.5" stroke-dasharray="3 2"/>` : ''}
+    ${selected ? `<circle cx="14" cy="14" r="9" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" stroke-dasharray="3 2"/>` : ''}
   </svg>`
   return L.divIcon({
     html: svg,
@@ -29,7 +60,7 @@ function createTeardropIcon(color: string, selected = false) {
   })
 }
 
-// ── Pulsing blue location dot icon ───────────────────────────────
+// ── Pulsing blue location dot ─────────────────────────────────────
 const LOCATION_ICON = L.divIcon({
   html: `<div class="location-dot-wrapper">
     <div class="location-dot-ring"></div>
@@ -41,7 +72,7 @@ const LOCATION_ICON = L.divIcon({
   iconAnchor: [10, 10],
 })
 
-// ── Map controller: fly to target programmatically ────────────────
+// ── Map controller ────────────────────────────────────────────────
 interface MapControllerProps {
   flyToTarget: { lat: number; lng: number; zoom?: number } | null
   onDone: () => void
@@ -56,7 +87,7 @@ function MapController({ flyToTarget, onDone }: MapControllerProps) {
   return null
 }
 
-// ── Map events: click to drop pin + track bounds ──────────────────
+// ── Map events ────────────────────────────────────────────────────
 interface MapEventsProps {
   onMapClick: (lat: number, lng: number) => void
   onBoundsChange: (b: LatLngBounds) => void
@@ -78,7 +109,7 @@ function MapEvents({ onMapClick, onBoundsChange, onPositionChange }: MapEventsPr
   return null
 }
 
-// ── Main map view ─────────────────────────────────────────────────
+// ── Main MapView ──────────────────────────────────────────────────
 export default function MapView() {
   const {
     leads,
@@ -96,11 +127,19 @@ export default function MapView() {
     setCurrentView,
   } = useApp()
 
+  const [mapStyle, setMapStyleState] = useState<MapStyle>(() => getMapStyle())
   const [bounds, setBounds] = useState<LatLngBounds | null>(null)
   const [pendingPin, setPendingPin] = useState<{ lat: number; lng: number } | null>(null)
   const [editLead, setEditLead] = useState<Lead | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [lockedLead, setLockedLead] = useState<Lead | null>(null)
+  const [showStylePicker, setShowStylePicker] = useState(false)
+
+  const handleSetMapStyle = useCallback((style: MapStyle) => {
+    setMapStyleState(style)
+    saveMapStyle(style)
+    setShowStylePicker(false)
+  }, [])
 
   // ── Live location ─────────────────────────────────────────────
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
@@ -116,7 +155,6 @@ export default function MapView() {
 
   useEffect(() => {
     if (!navigator.geolocation) return
-
     const fetchLocation = () => {
       navigator.geolocation.getCurrentPosition(
         (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
@@ -129,10 +167,8 @@ export default function MapView() {
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
       )
     }
-
     fetchLocation()
     locationIntervalRef.current = setInterval(fetchLocation, 10000)
-
     return () => {
       if (locationIntervalRef.current) clearInterval(locationIntervalRef.current)
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
@@ -148,7 +184,7 @@ export default function MapView() {
   }, [selectedLeadId, leads, selectLead, canEditLead])
 
   useEffect(() => {
-    if (flyToTarget && flyToTarget.leadId) {
+    if (flyToTarget?.leadId) {
       const lead = leads.find((l) => l.id === flyToTarget.leadId)
       if (lead) { setEditLead(lead); setShowForm(true) }
     }
@@ -160,6 +196,7 @@ export default function MapView() {
 
   const handleMapClick = useCallback((lat: number, lng: number) => {
     if (showForm) return
+    setShowStylePicker(false)
     setPendingPin({ lat, lng }); setEditLead(null); setShowForm(true)
   }, [showForm])
 
@@ -179,15 +216,11 @@ export default function MapView() {
   const handleBoundsChange = useCallback((b: LatLngBounds) => setBounds(b), [])
 
   const handlePositionChange = useCallback((lat: number, lng: number, zoom: number) => {
-    setMapPosition({ lat, lng, zoom })
-    saveMapPosition({ lat, lng, zoom })
+    setMapPosition({ lat, lng, zoom }); saveMapPosition({ lat, lng, zoom })
   }, [setMapPosition])
 
   const handleLocate = useCallback(() => {
-    if (userLocation) {
-      flyTo({ lat: userLocation.lat, lng: userLocation.lng, zoom: 17 })
-      return
-    }
+    if (userLocation) { flyTo({ lat: userLocation.lat, lng: userLocation.lng, zoom: 17 }); return }
     if (!navigator.geolocation) return
     navigator.geolocation.getCurrentPosition(
       (pos) => flyTo({ lat: pos.coords.latitude, lng: pos.coords.longitude, zoom: 17 }),
@@ -199,6 +232,8 @@ export default function MapView() {
     setMapPosition({ lat, lng, zoom: 15 })
   }, [setMapPosition])
 
+  const tileConfig = TILES[mapStyle]
+
   return (
     <div className="relative w-full flex-1 overflow-hidden">
       <MapContainer
@@ -208,12 +243,25 @@ export default function MapView() {
         zoomControl={true}
         attributionControl={true}
       >
+        {/* Base tile layer — key forces re-mount when style changes */}
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          maxZoom={19}
-          subdomains="abcd"
+          key={`base-${mapStyle}`}
+          url={tileConfig.url}
+          attribution={tileConfig.attribution}
+          maxZoom={tileConfig.maxZoom}
+          subdomains={tileConfig.subdomains || 'abc'}
         />
+
+        {/* Road/label overlay for Hybrid */}
+        {mapStyle === 'hybrid' && (
+          <TileLayer
+            key="hybrid-overlay"
+            url={HYBRID_OVERLAY_URL}
+            attribution=""
+            maxZoom={18}
+            opacity={0.8}
+          />
+        )}
 
         <MapController flyToTarget={flyToTarget} onDone={clearFlyTo} />
         <MapEvents
@@ -249,7 +297,7 @@ export default function MapView() {
         )}
       </MapContainer>
 
-      {/* ── Top overlays ── */}
+      {/* ── Search + filter bar (top-center) ── */}
       <div className="absolute top-3 left-3 right-3 z-[1000] flex flex-col items-center gap-2 pointer-events-none">
         <div className="w-full max-w-md pointer-events-auto">
           <SearchBar onSelect={handleSearchSelect} />
@@ -259,12 +307,68 @@ export default function MapView() {
         </div>
       </div>
 
-      {/* ── Area summary (top-right) ── */}
+      {/* ── Area summary (stacked below filter bar, top-right) ── */}
       <div className="absolute right-3 z-[1000] pointer-events-none" style={{ top: '168px' }}>
         <AreaSummary leads={visibleLeads} bounds={bounds} />
       </div>
 
-      {/* ── FAB controls (bottom right) ── */}
+      {/* ── Map style toggle (bottom-left) ── */}
+      <div className="absolute bottom-6 left-4 z-[1000]">
+        {showStylePicker ? (
+          <div
+            className="flex items-center gap-0.5 p-1 rounded-xl animate-fade-in"
+            style={{
+              background: 'rgba(8,11,24,0.92)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+            }}
+          >
+            {(['street', 'satellite', 'hybrid'] as MapStyle[]).map((style) => {
+              const active = mapStyle === style
+              return (
+                <button
+                  key={style}
+                  onClick={() => handleSetMapStyle(style)}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold transition-all active:scale-95"
+                  style={{
+                    background: active ? 'rgba(99,102,241,0.35)' : 'transparent',
+                    color: active ? '#c7d2fe' : 'rgba(240,244,255,0.5)',
+                    border: active ? '1px solid rgba(99,102,241,0.5)' : '1px solid transparent',
+                  }}
+                >
+                  {MAP_STYLE_LABELS[style]}
+                </button>
+              )
+            })}
+            {/* Close */}
+            <button
+              onClick={() => setShowStylePicker(false)}
+              className="ml-1 w-6 h-6 flex items-center justify-center rounded-lg text-white/30 hover:text-white/60 transition-colors text-lg leading-none"
+            >
+              ×
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowStylePicker(true)}
+            title={`Map view: ${MAP_STYLE_LABELS[mapStyle]}`}
+            className="flex items-center gap-2 px-3 h-11 rounded-xl text-xs font-semibold transition-all active:scale-95"
+            style={{
+              background: 'rgba(8,11,24,0.9)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+              color: 'rgba(240,244,255,0.7)',
+            }}
+          >
+            <Layers size={15} />
+            {MAP_STYLE_LABELS[mapStyle]}
+          </button>
+        )}
+      </div>
+
+      {/* ── FAB controls (bottom-right) ── */}
       <div className="absolute bottom-6 right-4 z-[1000] flex flex-col gap-2">
         <button
           onClick={() => setCurrentView('map')}
@@ -278,7 +382,6 @@ export default function MapView() {
           <Plus size={20} className="text-white" />
         </button>
 
-        {/* Locate me — highlights when we have a live fix */}
         <button
           onClick={handleLocate}
           title="My location"
@@ -317,7 +420,8 @@ export default function MapView() {
       {lockedLead && !isAdmin && (
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1200]
-            flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-medium animate-fade-in pointer-events-none"
+            flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-medium
+            animate-fade-in pointer-events-none"
           style={{
             background: 'rgba(8,11,24,0.95)',
             backdropFilter: 'blur(20px)',

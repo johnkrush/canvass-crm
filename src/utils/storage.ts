@@ -7,7 +7,19 @@ const KEYS = {
   initialized: 'canvass_initialized',
   teamMembers: 'canvass_team_members',
   repCredentials: 'canvass_rep_credentials',
+  mapStyle: 'canvass_map_style',
 } as const
+
+export type MapStyle = 'street' | 'satellite' | 'hybrid'
+
+export function getMapStyle(): MapStyle {
+  const raw = localStorage.getItem(KEYS.mapStyle)
+  return (raw as MapStyle) || 'street'
+}
+
+export function saveMapStyle(style: MapStyle): void {
+  localStorage.setItem(KEYS.mapStyle, style)
+}
 
 export function getLeads(): Lead[] {
   try {
@@ -40,9 +52,9 @@ export function saveUser(user: User | null): void {
 }
 
 const DEFAULT_POSITION: MapPosition = {
-  lat: 43.3255,
-  lng: -79.799,
-  zoom: 13,
+  lat: 43.7417,
+  lng: -79.3733,
+  zoom: 11,
 }
 
 export function getMapPosition(): MapPosition {
