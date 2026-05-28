@@ -25,6 +25,7 @@ export default function PinForm({ pendingPin, existingLead, onClose }: Props) {
   const { addLead, updateLead, deleteLead, teamMembers, user, isAdmin } = useApp()
   const [form, setForm] = useState<typeof BASE_EMPTY>({ ...BASE_EMPTY })
   const [geocoding, setGeocoding] = useState(false)
+  const [missingHouseNumber, setMissingHouseNumber] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -53,9 +54,11 @@ export default function PinForm({ pendingPin, existingLead, onClose }: Props) {
     if (!pendingPin) return
     let cancelled = false
     setGeocoding(true)
-    reverseGeocode(pendingPin.lat, pendingPin.lng).then((addr) => {
+    setMissingHouseNumber(false)
+    reverseGeocode(pendingPin.lat, pendingPin.lng).then((result) => {
       if (!cancelled) {
-        setForm((f) => ({ ...f, address: addr }))
+        setForm((f) => ({ ...f, address: result.address }))
+        setMissingHouseNumber(!result.hasHouseNumber)
         setGeocoding(false)
       }
     })
@@ -189,17 +192,30 @@ export default function PinForm({ pendingPin, existingLead, onClose }: Props) {
             <div>
               <label className="field-label">
                 Address
-                {geocoding && <span className="ml-2 inline-flex items-center gap-1 normal-case text-white/30 font-normal">
-                  <Loader2 size={10} className="animate-spin" /> looking up…
-                </span>}
+                {geocoding && (
+                  <span className="ml-2 inline-flex items-center gap-1 normal-case text-white/30 font-normal">
+                    <Loader2 size={10} className="animate-spin" /> looking up…
+                  </span>
+                )}
               </label>
               <input
                 type="text"
                 value={form.address}
-                onChange={(e) => set('address', e.target.value)}
+                onChange={(e) => { set('address', e.target.value); setMissingHouseNumber(false) }}
                 placeholder="Street address"
-                className="field-input"
+                className={`field-input ${missingHouseNumber ? 'border-[#BA7517]/60' : ''}`}
               />
+              {!geocoding && missingHouseNumber && (
+                <p className="mt-1.5 text-[11px] flex items-center gap-1" style={{ color: '#BA7517' }}>
+                  <span>⚠</span>
+                  No house number detected — add it manually before saving
+                </p>
+              )}
+              {!geocoding && !missingHouseNumber && form.address && (
+                <p className="mt-1.5 text-[11px] text-dim">
+                  Verify address before saving
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">

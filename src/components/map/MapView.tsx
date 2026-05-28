@@ -15,19 +15,19 @@ const TILES = {
   street: {
     url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    maxZoom: 19,
+    maxNativeZoom: 19,
     subdomains: 'abcd',
   },
   satellite: {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     attribution: '&copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community',
-    maxZoom: 18,
+    maxNativeZoom: 19,
     subdomains: '' as string,
   },
   hybrid: {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     attribution: '&copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community',
-    maxZoom: 18,
+    maxNativeZoom: 19,
     subdomains: '' as string,
   },
 } as const
@@ -130,6 +130,7 @@ export default function MapView() {
   const [mapStyle, setMapStyleState] = useState<MapStyle>(() => getMapStyle())
   const [bounds, setBounds] = useState<LatLngBounds | null>(null)
   const [pendingPin, setPendingPin] = useState<{ lat: number; lng: number } | null>(null)
+  const clickDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [editLead, setEditLead] = useState<Lead | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [lockedLead, setLockedLead] = useState<Lead | null>(null)
@@ -197,7 +198,13 @@ export default function MapView() {
   const handleMapClick = useCallback((lat: number, lng: number) => {
     if (showForm) return
     setShowStylePicker(false)
-    setPendingPin({ lat, lng }); setEditLead(null); setShowForm(true)
+    // 500ms delay so the map registers the exact click position before the form opens
+    if (clickDelayRef.current) clearTimeout(clickDelayRef.current)
+    clickDelayRef.current = setTimeout(() => {
+      setPendingPin({ lat, lng })
+      setEditLead(null)
+      setShowForm(true)
+    }, 500)
   }, [showForm])
 
   const handleMarkerClick = useCallback((lead: Lead) => {
@@ -239,6 +246,7 @@ export default function MapView() {
       <MapContainer
         center={[mapPosition.lat, mapPosition.lng]}
         zoom={mapPosition.zoom}
+        maxZoom={22}
         style={{ width: '100%', height: '100%' }}
         zoomControl={true}
         attributionControl={true}
@@ -248,7 +256,8 @@ export default function MapView() {
           key={`base-${mapStyle}`}
           url={tileConfig.url}
           attribution={tileConfig.attribution}
-          maxZoom={tileConfig.maxZoom}
+          maxZoom={22}
+          maxNativeZoom={tileConfig.maxNativeZoom}
           subdomains={tileConfig.subdomains || 'abc'}
         />
 
@@ -258,7 +267,8 @@ export default function MapView() {
             key="hybrid-overlay"
             url={HYBRID_OVERLAY_URL}
             attribution=""
-            maxZoom={18}
+            maxZoom={22}
+            maxNativeZoom={19}
             opacity={0.8}
           />
         )}
