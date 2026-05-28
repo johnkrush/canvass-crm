@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from 'react'
 import { useApp } from '../../contexts/AppContext'
-import { Lead, LeadStatus, STATUS_CONFIG, ALL_STATUSES, TEAM_MEMBERS } from '../../types'
+import { Lead, LeadStatus, STATUS_CONFIG, ALL_STATUSES } from '../../types'
 import { reverseGeocode } from '../../utils/geocoding'
 import { X, Trash2, Loader2, MapPin } from 'lucide-react'
 
@@ -10,20 +10,20 @@ interface Props {
   onClose: () => void
 }
 
-const EMPTY: Omit<Lead, 'id' | 'createdAt' | 'updatedAt' | 'lat' | 'lng'> = {
+const BASE_EMPTY = {
   householdName: '',
   address: '',
   contactName: '',
   phone: '',
   email: '',
-  status: 'interested',
+  status: 'interested' as LeadStatus,
   notes: '',
-  assignedRep: TEAM_MEMBERS[0],
+  assignedRep: '',
 }
 
 export default function PinForm({ pendingPin, existingLead, onClose }: Props) {
-  const { addLead, updateLead, deleteLead } = useApp()
-  const [form, setForm] = useState<typeof EMPTY>(EMPTY)
+  const { addLead, updateLead, deleteLead, teamMembers } = useApp()
+  const [form, setForm] = useState<typeof BASE_EMPTY>({ ...BASE_EMPTY })
   const [geocoding, setGeocoding] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -42,7 +42,7 @@ export default function PinForm({ pendingPin, existingLead, onClose }: Props) {
         assignedRep: existingLead.assignedRep,
       })
     } else {
-      setForm(EMPTY)
+      setForm({ ...BASE_EMPTY, assignedRep: teamMembers[0] ?? '' })
     }
   }, [existingLead])
 
@@ -60,7 +60,7 @@ export default function PinForm({ pendingPin, existingLead, onClose }: Props) {
     return () => { cancelled = true }
   }, [pendingPin])
 
-  const set = <K extends keyof typeof EMPTY>(k: K, v: (typeof EMPTY)[K]) =>
+  const set = <K extends keyof typeof BASE_EMPTY>(k: K, v: (typeof BASE_EMPTY)[K]) =>
     setForm((f) => ({ ...f, [k]: v }))
 
   const handleSubmit = async (e: FormEvent) => {
@@ -242,7 +242,7 @@ export default function PinForm({ pendingPin, existingLead, onClose }: Props) {
                 className="field-input"
                 style={{ appearance: 'none' }}
               >
-                {TEAM_MEMBERS.map((m) => (
+                {teamMembers.map((m) => (
                   <option key={m} value={m} style={{ background: '#0d1426' }}>{m}</option>
                 ))}
               </select>

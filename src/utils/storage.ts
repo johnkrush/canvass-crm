@@ -5,6 +5,7 @@ const KEYS = {
   user: 'canvass_user',
   mapPosition: 'canvass_map_position',
   initialized: 'canvass_initialized',
+  teamMembers: 'canvass_team_members',
 } as const
 
 export function getLeads(): Lead[] {
@@ -62,6 +63,19 @@ export function isInitialized(): boolean {
 
 export function setInitialized(): void {
   localStorage.setItem(KEYS.initialized, 'true')
+}
+
+export function getTeamMembers(): string[] {
+  try {
+    const raw = localStorage.getItem(KEYS.teamMembers)
+    return raw ? (JSON.parse(raw) as string[]) : []
+  } catch {
+    return []
+  }
+}
+
+export function saveTeamMembers(members: string[]): void {
+  localStorage.setItem(KEYS.teamMembers, JSON.stringify(members))
 }
 
 export function clearAllData(): void {

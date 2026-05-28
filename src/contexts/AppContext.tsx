@@ -13,6 +13,7 @@ import {
   View,
   MapPosition,
   LeadStatus,
+  TEAM_MEMBERS as DEFAULT_TEAM_MEMBERS,
 } from '../types'
 import {
   getLeads,
@@ -24,6 +25,8 @@ import {
   isInitialized,
   setInitialized,
   clearAllData,
+  getTeamMembers,
+  saveTeamMembers,
 } from '../utils/storage'
 import { DEMO_LEADS } from '../data/demoData'
 
@@ -66,7 +69,12 @@ interface AppContextValue {
   selectedLeadId: string | null
   selectLead: (id: string | null) => void
 
+  // Team members
+  teamMembers: string[]
+  setTeamMembers: (members: string[]) => void
+
   // Settings
+  updateUser: (updates: Partial<User>) => void
   clearData: () => void
 }
 
@@ -87,6 +95,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [flyToTarget, setFlyToTarget] = useState<FlyToTarget | null>(null)
   const [activeFilters, setActiveFilters] = useState<LeadStatus[]>([])
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
+  const [teamMembers, setTeamMembersState] = useState<string[]>(() => {
+    const stored = getTeamMembers()
+    return stored.length > 0 ? stored : DEFAULT_TEAM_MEMBERS
+  })
 
   useEffect(() => {
     saveLeads(leads)
@@ -105,6 +117,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     setUser(null)
     saveUser(null)
+  }, [])
+
+  const updateUser = useCallback((updates: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return prev
+      const updated = { ...prev, ...updates }
+      saveUser(updated)
+      return updated
+    })
+  }, [])
+
+  const setTeamMembers = useCallback((members: string[]) => {
+    setTeamMembersState(members)
+    saveTeamMembers(members)
   }, [])
 
   const addLead = useCallback(
@@ -164,6 +190,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveLeads(DEMO_LEADS)
     setInitialized()
     setLeads(DEMO_LEADS)
+    setTeamMembersState(DEFAULT_TEAM_MEMBERS)
     setActiveFilters([])
     setSelectedLeadId(null)
   }, [])
@@ -173,6 +200,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       user,
       login,
       logout,
+      updateUser,
       leads,
       addLead,
       updateLead,
@@ -189,12 +217,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       clearFilters,
       selectedLeadId,
       selectLead,
+      teamMembers,
+      setTeamMembers,
       clearData,
     }),
     [
       user,
       login,
       logout,
+      updateUser,
       leads,
       addLead,
       updateLead,
@@ -210,6 +241,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       clearFilters,
       selectedLeadId,
       selectLead,
+      teamMembers,
+      setTeamMembers,
       clearData,
     ]
   )
