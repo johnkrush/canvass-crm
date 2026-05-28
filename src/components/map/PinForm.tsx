@@ -213,7 +213,7 @@ export default function PinForm({ pendingPin, existingLead, onClose }: Props) {
               )}
               {!geocoding && !missingHouseNumber && form.address && (
                 <p className="mt-1.5 text-[11px] text-dim">
-                  Verify address before saving
+                  Is this the correct house? Verify the number above before saving.
                 </p>
               )}
             </div>

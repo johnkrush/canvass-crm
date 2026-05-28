@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, CircleMarker, useMap, useMapEvents } from 'react-leaflet'
 import L, { type LatLngBounds } from 'leaflet'
 import { useApp } from '../../contexts/AppContext'
 import { Lead, STATUS_CONFIG } from '../../types'
@@ -11,29 +11,35 @@ import PinForm from './PinForm'
 import { Locate, Plus, Layers } from 'lucide-react'
 
 // ── Tile layer configs ────────────────────────────────────────────
-const TILES = {
-  street: {
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    maxNativeZoom: 19,
-    subdomains: 'abcd',
-  },
-  satellite: {
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution: '&copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community',
-    maxNativeZoom: 19,
-    subdomains: '' as string,
-  },
-  hybrid: {
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution: '&copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community',
-    maxNativeZoom: 19,
-    subdomains: '' as string,
-  },
-} as const
+// OSM standard tiles show house numbers on buildings at zoom 18-19
+const OSM_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+const ESRI_SAT_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+const ESRI_ATTRIBUTION = '&copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community'
 
-const HYBRID_OVERLAY_URL =
-  'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}'
+const TILES: Record<MapStyle, { url: string; attribution: string; maxNativeZoom: number; subdomains: string }> = {
+  // Street: standard OSM — shows house numbers at zoom 18+
+  street: {
+    url: OSM_URL,
+    attribution: OSM_ATTRIBUTION,
+    maxNativeZoom: 19,
+    subdomains: 'abc',
+  },
+  // Satellite: ESRI imagery only
+  satellite: {
+    url: ESRI_SAT_URL,
+    attribution: ESRI_ATTRIBUTION,
+    maxNativeZoom: 19,
+    subdomains: '',
+  },
+  // Hybrid: ESRI satellite base (OSM overlay added separately below)
+  hybrid: {
+    url: ESRI_SAT_URL,
+    attribution: `${ESRI_ATTRIBUTION} | ${OSM_ATTRIBUTION}`,
+    maxNativeZoom: 19,
+    subdomains: '',
+  },
+}
 
 const MAP_STYLE_LABELS: Record<MapStyle, string> = {
   street: 'Street',
@@ -41,7 +47,7 @@ const MAP_STYLE_LABELS: Record<MapStyle, string> = {
   hybrid: 'Hybrid',
 }
 
-// ── Custom teardrop pin icon ──────────────────────────────────────
+// ── Custom teardrop pin ───────────────────────────────────────────
 function createTeardropIcon(color: string, selected = false) {
   const w = selected ? 34 : 28
   const h = Math.round(w * 1.45)
@@ -81,7 +87,7 @@ function MapController({ flyToTarget, onDone }: MapControllerProps) {
   const map = useMap()
   useEffect(() => {
     if (!flyToTarget) return
-    map.flyTo([flyToTarget.lat, flyToTarget.lng], flyToTarget.zoom ?? 16, { duration: 1.0 })
+    map.flyTo([flyToTarget.lat, flyToTarget.lng], flyToTarget.zoom ?? 16, { duration: 0.9 })
     onDone()
   }, [flyToTarget, map, onDone])
   return null
@@ -130,6 +136,7 @@ export default function MapView() {
   const [mapStyle, setMapStyleState] = useState<MapStyle>(() => getMapStyle())
   const [bounds, setBounds] = useState<LatLngBounds | null>(null)
   const [pendingPin, setPendingPin] = useState<{ lat: number; lng: number } | null>(null)
+  const [clickHighlight, setClickHighlight] = useState<{ lat: number; lng: number } | null>(null)
   const clickDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [editLead, setEditLead] = useState<Lead | null>(null)
   const [showForm, setShowForm] = useState(false)
@@ -142,17 +149,17 @@ export default function MapView() {
     setShowStylePicker(false)
   }, [])
 
-  // ── Live location ─────────────────────────────────────────────
+  // ── Live GPS location ─────────────────────────────────────────
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [locationToast, setLocationToast] = useState('')
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const showLocToast = (msg: string) => {
+  const showLocToast = useCallback((msg: string) => {
     setLocationToast(msg)
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     toastTimerRef.current = setTimeout(() => setLocationToast(''), 3500)
-  }
+  }, [])
 
   useEffect(() => {
     if (!navigator.geolocation) return
@@ -174,7 +181,7 @@ export default function MapView() {
       if (locationIntervalRef.current) clearInterval(locationIntervalRef.current)
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     }
-  }, [])
+  }, [showLocToast])
 
   // ── List → map jump ───────────────────────────────────────────
   useEffect(() => {
@@ -198,14 +205,21 @@ export default function MapView() {
   const handleMapClick = useCallback((lat: number, lng: number) => {
     if (showForm) return
     setShowStylePicker(false)
-    // 500ms delay so the map registers the exact click position before the form opens
+
+    // Show highlight ring immediately at click location
+    setClickHighlight({ lat, lng })
+
+    // Fly to zoom 19 so house numbers are visible before the form opens
+    flyTo({ lat, lng, zoom: 19 })
+
+    // Wait for the fly animation (~900ms) then open the form
     if (clickDelayRef.current) clearTimeout(clickDelayRef.current)
     clickDelayRef.current = setTimeout(() => {
       setPendingPin({ lat, lng })
       setEditLead(null)
       setShowForm(true)
-    }, 500)
-  }, [showForm])
+    }, 1100)
+  }, [showForm, flyTo])
 
   const handleMarkerClick = useCallback((lead: Lead) => {
     if (!canEditLead(lead)) {
@@ -213,11 +227,16 @@ export default function MapView() {
       setTimeout(() => setLockedLead(null), 2200)
       return
     }
+    setClickHighlight(null)
     setPendingPin(null); setEditLead(lead); setShowForm(true)
   }, [canEditLead])
 
   const handleClose = useCallback(() => {
-    setShowForm(false); setPendingPin(null); setEditLead(null)
+    setShowForm(false)
+    setPendingPin(null)
+    setEditLead(null)
+    setClickHighlight(null)
+    if (clickDelayRef.current) clearTimeout(clickDelayRef.current)
   }, [])
 
   const handleBoundsChange = useCallback((b: LatLngBounds) => setBounds(b), [])
@@ -233,7 +252,7 @@ export default function MapView() {
       (pos) => flyTo({ lat: pos.coords.latitude, lng: pos.coords.longitude, zoom: 17 }),
       () => showLocToast('Enable location for live tracking')
     )
-  }, [userLocation, flyTo])
+  }, [userLocation, flyTo, showLocToast])
 
   const handleSearchSelect = useCallback((lat: number, lng: number) => {
     setMapPosition({ lat, lng, zoom: 15 })
@@ -246,12 +265,13 @@ export default function MapView() {
       <MapContainer
         center={[mapPosition.lat, mapPosition.lng]}
         zoom={mapPosition.zoom}
+        minZoom={10}
         maxZoom={22}
         style={{ width: '100%', height: '100%' }}
         zoomControl={true}
         attributionControl={true}
       >
-        {/* Base tile layer — key forces re-mount when style changes */}
+        {/* ── Base tile layer ── key forces re-mount on style change */}
         <TileLayer
           key={`base-${mapStyle}`}
           url={tileConfig.url}
@@ -261,15 +281,17 @@ export default function MapView() {
           subdomains={tileConfig.subdomains || 'abc'}
         />
 
-        {/* Road/label overlay for Hybrid */}
+        {/* ── Hybrid: OSM labels on top of satellite at 0.7 opacity ──
+            OSM shows house numbers on buildings at zoom 18-19         */}
         {mapStyle === 'hybrid' && (
           <TileLayer
-            key="hybrid-overlay"
-            url={HYBRID_OVERLAY_URL}
+            key="hybrid-osm-labels"
+            url={OSM_URL}
             attribution=""
             maxZoom={22}
             maxNativeZoom={19}
-            opacity={0.8}
+            subdomains="abc"
+            opacity={0.7}
           />
         )}
 
@@ -280,7 +302,22 @@ export default function MapView() {
           onPositionChange={handlePositionChange}
         />
 
-        {/* Lead pins */}
+        {/* ── Click highlight ring (shows while zooming before form opens) */}
+        {clickHighlight && !showForm && (
+          <CircleMarker
+            center={[clickHighlight.lat, clickHighlight.lng]}
+            radius={22}
+            pathOptions={{
+              color: '#6366f1',
+              weight: 2.5,
+              dashArray: '6 5',
+              fillColor: '#6366f1',
+              fillOpacity: 0.1,
+            }}
+          />
+        )}
+
+        {/* ── Lead pins */}
         {visibleLeads.map((lead) => {
           const editable = canEditLead(lead)
           return (
@@ -296,7 +333,7 @@ export default function MapView() {
           )
         })}
 
-        {/* Live location dot */}
+        {/* ── Live GPS blue dot */}
         {userLocation && (
           <Marker
             position={[userLocation.lat, userLocation.lng]}
@@ -317,7 +354,7 @@ export default function MapView() {
         </div>
       </div>
 
-      {/* ── Area summary (stacked below filter bar, top-right) ── */}
+      {/* ── Area summary (top-right, below filter bar) ── */}
       <div className="absolute right-3 z-[1000] pointer-events-none" style={{ top: '168px' }}>
         <AreaSummary leads={visibleLeads} bounds={bounds} />
       </div>
@@ -328,7 +365,7 @@ export default function MapView() {
           <div
             className="flex items-center gap-0.5 p-1 rounded-xl animate-fade-in"
             style={{
-              background: 'rgba(8,11,24,0.92)',
+              background: 'rgba(8,11,24,0.95)',
               backdropFilter: 'blur(20px)',
               border: '1px solid rgba(255,255,255,0.12)',
               boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
@@ -351,7 +388,6 @@ export default function MapView() {
                 </button>
               )
             })}
-            {/* Close */}
             <button
               onClick={() => setShowStylePicker(false)}
               className="ml-1 w-6 h-6 flex items-center justify-center rounded-lg text-white/30 hover:text-white/60 transition-colors text-lg leading-none"
@@ -382,7 +418,7 @@ export default function MapView() {
       <div className="absolute bottom-6 right-4 z-[1000] flex flex-col gap-2">
         <button
           onClick={() => setCurrentView('map')}
-          title="Click the map to drop a pin"
+          title="Click anywhere on the map to drop a pin"
           className="w-11 h-11 rounded-xl flex items-center justify-center shadow-lg transition-all active:scale-95"
           style={{
             background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
@@ -407,7 +443,7 @@ export default function MapView() {
         </button>
       </div>
 
-      {/* ── Location permission toast ── */}
+      {/* ── Location toast ── */}
       {locationToast && (
         <div
           className="absolute bottom-24 left-1/2 -translate-x-1/2 z-[1200]
