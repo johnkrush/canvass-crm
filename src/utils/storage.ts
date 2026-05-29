@@ -6,7 +6,9 @@ const KEYS = {
   mapPosition: 'canvass_map_position',
   initialized: 'canvass_initialized',
   teamMembers: 'canvass_team_members',
+  teamInitialized: 'canvass_team_initialized',
   repCredentials: 'canvass_rep_credentials',
+  repCredsInitialized: 'canvass_rep_creds_initialized',
   mapStyle: 'canvass_map_style',
 } as const
 
@@ -70,12 +72,18 @@ export function saveMapPosition(pos: MapPosition): void {
   localStorage.setItem(KEYS.mapPosition, JSON.stringify(pos))
 }
 
-export function isInitialized(): boolean {
-  return localStorage.getItem(KEYS.initialized) === 'true'
+// Returns true only when this exact key has never been written.
+// An existing key containing [] is still "has data" — the user cleared it intentionally.
+export function hasStoredLeads(): boolean {
+  return localStorage.getItem(KEYS.leads) !== null
 }
 
-export function setInitialized(): void {
-  localStorage.setItem(KEYS.initialized, 'true')
+export function hasStoredTeamMembers(): boolean {
+  return localStorage.getItem(KEYS.teamMembers) !== null
+}
+
+export function hasStoredRepCredentials(): boolean {
+  return localStorage.getItem(KEYS.repCredentials) !== null
 }
 
 export function getRepCredentials(): RepCredential[] {

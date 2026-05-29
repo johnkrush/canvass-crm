@@ -20,17 +20,18 @@ import {
 import {
   getLeads,
   saveLeads,
+  hasStoredLeads,
   getUser,
   saveUser,
   getMapPosition,
   saveMapPosition,
-  isInitialized,
-  setInitialized,
   clearAllData,
   getTeamMembers,
   saveTeamMembers,
+  hasStoredTeamMembers,
   getRepCredentials,
   saveRepCredentials,
+  hasStoredRepCredentials,
 } from '../utils/storage'
 import { DEMO_LEADS } from '../data/demoData'
 
@@ -103,31 +104,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   })
 
   const [leads, setLeads] = useState<Lead[]>(() => {
-    if (!isInitialized()) {
-      saveLeads(DEMO_LEADS)
-      setInitialized()
-      return DEMO_LEADS
-    }
-    return getLeads()
+    if (hasStoredLeads()) return getLeads()
+    saveLeads(DEMO_LEADS)
+    return DEMO_LEADS
   })
 
   const [repCredentials, setRepCredentialsState] = useState<RepCredential[]>(() => {
-    const stored = getRepCredentials()
-    if (stored.length === 0) {
-      saveRepCredentials(DEFAULT_REP_CREDENTIALS)
-      return DEFAULT_REP_CREDENTIALS
-    }
-    // Merge: add any new default accounts not yet in localStorage
-    const storedEmails = new Set(stored.map((c) => c.email.toLowerCase()))
-    const missing = DEFAULT_REP_CREDENTIALS.filter(
-      (c) => !storedEmails.has(c.email.toLowerCase())
-    )
-    if (missing.length > 0) {
-      const merged = [...stored, ...missing]
-      saveRepCredentials(merged)
-      return merged
-    }
-    return stored
+    if (hasStoredRepCredentials()) return getRepCredentials()
+    saveRepCredentials(DEFAULT_REP_CREDENTIALS)
+    return DEFAULT_REP_CREDENTIALS
   })
 
   const [currentView, setCurrentView] = useState<View>('map')
@@ -137,13 +122,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
 
   const [teamMembers, setTeamMembersState] = useState<string[]>(() => {
-    const stored = getTeamMembers()
-    return stored.length > 0 ? stored : DEFAULT_TEAM_MEMBERS
+    if (hasStoredTeamMembers()) return getTeamMembers()
+    saveTeamMembers(DEFAULT_TEAM_MEMBERS)
+    return DEFAULT_TEAM_MEMBERS
   })
-
-  useEffect(() => {
-    saveLeads(leads)
-  }, [leads])
 
   const isAdmin = user?.role === 'admin'
 
@@ -207,22 +189,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
         createdAt: now,
         updatedAt: now,
       }
-      setLeads((prev) => [...prev, lead])
+      setLeads((prev) => {
+        const next = [...prev, lead]
+        saveLeads(next)
+        return next
+      })
       return lead
     },
     []
   )
 
   const updateLead = useCallback((updated: Lead) => {
-    setLeads((prev) =>
-      prev.map((l) =>
+    setLeads((prev) => {
+      const next = prev.map((l) =>
         l.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : l
       )
-    )
+      saveLeads(next)
+      return next
+    })
   }, [])
 
   const deleteLead = useCallback((id: string) => {
-    setLeads((prev) => prev.filter((l) => l.id !== id))
+    setLeads((prev) => {
+      const next = prev.filter((l) => l.id !== id)
+      saveLeads(next)
+      return next
+    })
   }, [])
 
   const setMapPosition = useCallback((p: MapPosition) => {
@@ -282,10 +274,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const clearData = useCallback(() => {
     clearAllData()
     saveLeads(DEMO_LEADS)
-    setInitialized()
+    saveTeamMembers(DEFAULT_TEAM_MEMBERS)
+    saveRepCredentials(DEFAULT_REP_CREDENTIALS)
     setLeads(DEMO_LEADS)
     setTeamMembersState(DEFAULT_TEAM_MEMBERS)
-    saveRepCredentials(DEFAULT_REP_CREDENTIALS)
     setRepCredentialsState(DEFAULT_REP_CREDENTIALS)
     setActiveFilters([])
     setSelectedLeadId(null)

@@ -300,7 +300,15 @@ export default function SettingsPage() {
   // ── Team members ─────────────────────────────────────────────
   const [members, setMembers] = useState<string[]>(teamMembers)
   const newMemberRef = useRef<HTMLInputElement | null>(null)
-  useEffect(() => { setMembers(teamMembers) }, [teamMembers])
+  useEffect(() => {
+    console.log('Page loaded, localStorage has:', localStorage.getItem('canvass_team_members'))
+    console.log('Using teams:', teamMembers)
+  }, [])
+  useEffect(() => {
+    console.log('localStorage teamMembers:', localStorage.getItem('canvass_team_members'))
+    console.log('current teams state:', teamMembers)
+    setMembers(teamMembers)
+  }, [teamMembers])
 
   const handleMemberChange = (i: number, value: string) =>
     setMembers((prev) => prev.map((m, idx) => (idx === i ? value : m)))
@@ -330,9 +338,12 @@ export default function SettingsPage() {
   }
 
   const handleRemoveMember = (i: number) => {
+    console.log('Deleting rep, teams before:', members)
     const updated = members.filter((_, idx) => idx !== i).filter((m) => m.trim())
     setMembers(updated)
     setTeamMembers(updated)
+    console.log('Deleted rep, teams after:', updated)
+    console.log('Saved to localStorage:', localStorage.getItem('canvass_team_members'))
     showToast('Member removed')
   }
 
