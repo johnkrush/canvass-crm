@@ -115,7 +115,7 @@ function CloseRateChart({ stats }: { stats: RepStat[] }) {
                 <span className="text-[10px] text-dim">{stat.interested}/{stat.total}</span>
                 <span
                   className="text-xs font-bold tabular-nums"
-                  style={{ color: stat.rate >= 50 ? '#1D9E75' : stat.rate >= 25 ? '#BA7517' : 'rgba(240,244,255,0.5)' }}
+                  style={{ color: stat.rate >= 3 ? '#1D9E75' : stat.rate >= 1.5 ? '#BA7517' : '#E24B4A' }}
                 >
                   {stat.rate}%
                 </span>
@@ -126,11 +126,11 @@ function CloseRateChart({ stats }: { stats: RepStat[] }) {
                 className="h-full rounded-full transition-all duration-700"
                 style={{
                   width: `${(stat.rate / maxRate) * 100}%`,
-                  background: stat.rate >= 50
+                  background: stat.rate >= 3
                     ? 'linear-gradient(90deg, #1D9E75, #25c48a)'
-                    : stat.rate >= 25
+                    : stat.rate >= 1.5
                     ? 'linear-gradient(90deg, #BA7517, #e8960d)'
-                    : 'rgba(255,255,255,0.25)',
+                    : 'linear-gradient(90deg, #E24B4A, #f06b6a)',
                 }}
               />
             </div>
@@ -226,15 +226,15 @@ export default function Dashboard() {
           <div className="flex items-center gap-4 mb-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
             <div className="flex items-center gap-1.5 text-xs text-dim">
               <span className="w-3 h-1.5 rounded-full bg-[#1D9E75]" />
-              ≥ 50% excellent
+              ≥ 3% excellent
             </div>
             <div className="flex items-center gap-1.5 text-xs text-dim">
               <span className="w-3 h-1.5 rounded-full bg-[#BA7517]" />
-              25–49% good
+              1.5–2.99% good
             </div>
             <div className="flex items-center gap-1.5 text-xs text-dim">
-              <span className="w-3 h-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.25)' }} />
-              &lt; 25% needs work
+              <span className="w-3 h-1.5 rounded-full bg-[#E24B4A]" />
+              &lt; 1.5% needs work
             </div>
           </div>
           <CloseRateChart stats={closeRateStats} />
@@ -333,7 +333,7 @@ export default function Dashboard() {
                     <div className="text-right shrink-0">
                       <p
                         className="text-sm font-bold tabular-nums"
-                        style={{ color: rate >= 50 ? '#1D9E75' : rate >= 25 ? '#BA7517' : 'rgba(240,244,255,0.4)' }}
+                        style={{ color: rate >= 3 ? '#1D9E75' : rate >= 1.5 ? '#BA7517' : '#E24B4A' }}
                       >
                         {total > 0 ? `${rate}%` : '—'}
                       </p>
