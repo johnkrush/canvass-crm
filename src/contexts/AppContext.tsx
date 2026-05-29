@@ -158,37 +158,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let mounted = true
 
     async function init() {
-      // Leads
-      const { data: leadsData, error: leadsErr } = await supabase
-        .from('leads')
-        .select('*')
-        .order('created_at', { ascending: true })
+      // Fetch both tables in parallel
+      const [
+        { data: leadsData, error: leadsErr },
+        { data: teamData, error: teamErr },
+      ] = await Promise.all([
+        supabase.from('leads').select('*').order('created_at', { ascending: true }),
+        supabase.from('team_members').select('*').order('created_at', { ascending: true }),
+      ])
 
-      if (mounted && !leadsErr && leadsData) {
-        if (leadsData.length > 0) {
-          setLeads((leadsData as LeadRow[]).map(rowToLead))
-        } else {
-          // First run — seed demo leads with real UUIDs
+      if (!mounted) return
+
+      if (leadsErr) console.error('[supabase] fetch leads:', leadsErr.message)
+      if (teamErr) console.error('[supabase] fetch team_members:', teamErr.message)
+
+      // Only seed when BOTH tables are empty — this is a true first run.
+      // If only leads is empty it means the user deleted their leads intentionally.
+      const isFirstRun = !leadsErr && !teamErr
+        && leadsData!.length === 0
+        && teamData!.length === 0
+
+      // Leads
+      if (!leadsErr && leadsData) {
+        if (isFirstRun) {
           const seeded = DEMO_LEADS.map((d) => ({ ...d, id: crypto.randomUUID() }))
           setLeads(seeded)
           const { error } = await supabase.from('leads').insert(seeded.map(leadToRow))
           if (error) console.error('[supabase] seed leads:', error.message)
+        } else {
+          // Respect whatever is in Supabase, including an empty array
+          setLeads((leadsData as LeadRow[]).map(rowToLead))
         }
-      } else if (leadsErr) {
-        console.error('[supabase] fetch leads:', leadsErr.message)
       }
 
       // Team members
-      const { data: teamData, error: teamErr } = await supabase
-        .from('team_members')
-        .select('*')
-        .order('created_at', { ascending: true })
-
-      if (mounted && !teamErr && teamData) {
-        if (teamData.length > 0) {
-          setTeamMemberRows(teamData as TeamMemberRow[])
-        } else {
-          // First run — seed default rep credentials
+      if (!teamErr && teamData) {
+        if (isFirstRun) {
           const seeded: TeamMemberRow[] = DEFAULT_REP_CREDENTIALS.map((c) => ({
             id: crypto.randomUUID(),
             name: c.name,
@@ -200,9 +205,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setTeamMemberRows(seeded)
           const { error } = await supabase.from('team_members').insert(seeded)
           if (error) console.error('[supabase] seed team_members:', error.message)
+        } else {
+          setTeamMemberRows(teamData as TeamMemberRow[])
         }
-      } else if (teamErr) {
-        console.error('[supabase] fetch team_members:', teamErr.message)
       }
     }
 

@@ -157,7 +157,7 @@ export default function Dashboard() {
     return { total: myLeads.length, addedThisWeek, interested, conversionPct, activeReps }
   }, [myLeads, leads])
 
-  // Close rate chart data
+  // Close rate chart data — all team members, including those with 0 leads
   const closeRateStats = useMemo<RepStat[]>(() => {
     const repsToShow = isAdmin ? teamMembers : (user ? [user.name] : [])
     return repsToShow
@@ -167,7 +167,6 @@ export default function Dashboard() {
         const total = repLeads.length
         return { name, total, interested, rate: total > 0 ? Math.round((interested / total) * 100) : 0 }
       })
-      .filter((s) => s.total > 0)
       .sort((a, b) => b.rate - a.rate || b.total - a.total)
   }, [leads, teamMembers, isAdmin, user])
 
@@ -304,12 +303,18 @@ export default function Dashboard() {
             <h2 className="text-sm font-semibold text-white/70 uppercase tracking-wider">Leads by Rep</h2>
           </div>
           <div className="glass rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
-            {Array.from(new Set(leads.map((l) => l.assignedRep).filter(Boolean)))
-              .sort()
-              .map((rep, i, arr) => {
-                const repLeads = leads.filter((l) => l.assignedRep === rep)
-                const intCount = repLeads.filter((l) => l.status === 'interested').length
-                return (
+            {teamMembers.length === 0 ? (
+              <div className="py-8 text-center text-sm text-dim">No team members yet</div>
+            ) : (
+              teamMembers
+                .map((rep) => {
+                  const repLeads = leads.filter((l) => l.assignedRep === rep)
+                  const intCount = repLeads.filter((l) => l.status === 'interested').length
+                  const rate = repLeads.length > 0 ? Math.round((intCount / repLeads.length) * 100) : 0
+                  return { rep, total: repLeads.length, interested: intCount, rate }
+                })
+                .sort((a, b) => b.total - a.total || b.rate - a.rate)
+                .map(({ rep, total, interested, rate }, i, arr) => (
                   <div
                     key={rep}
                     className="flex items-center gap-4 px-4 py-3"
@@ -319,19 +324,26 @@ export default function Dashboard() {
                       className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
                       style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
                     >
-                      {rep.split(' ').map((w) => w[0]).join('').slice(0, 2)}
+                      {rep.split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-white">{rep}</p>
-                      <p className="text-xs text-dim">{repLeads.length} leads</p>
+                      <p className="text-xs text-dim">{total} lead{total !== 1 ? 's' : ''}</p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold" style={{ color: '#1D9E75' }}>{intCount}</p>
-                      <p className="text-[10px] text-dim">interested</p>
+                    <div className="text-right shrink-0">
+                      <p
+                        className="text-sm font-bold tabular-nums"
+                        style={{ color: rate >= 50 ? '#1D9E75' : rate >= 25 ? '#BA7517' : 'rgba(240,244,255,0.4)' }}
+                      >
+                        {total > 0 ? `${rate}%` : '—'}
+                      </p>
+                      <p className="text-[10px] text-dim">
+                        {total > 0 ? `${interested} interested` : 'no leads'}
+                      </p>
                     </div>
                   </div>
-                )
-              })}
+                ))
+            )}
           </div>
         </div>
       )}
